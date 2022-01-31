@@ -1,0 +1,193 @@
+---
+title: "715_project"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#Packages
+library(dplyr)
+library(tidyverse)
+library(readxl)
+library(readr)
+library(tidyverse)
+```
+
+# Exploratory Analysis
+
+Wanliu Cite 11 (PRSA_Data_Wanliu_20130301-20170228.csv) has the least amount of missing data with only 382 N.A. values
+
+```{r}
+wanliu <- read.csv("PRSA_Data_Wanliu_20130301-20170228.csv", header = T)
+og_wanliu <- wanliu[c(2:6)]
+```
+
+```{r}
+# combine year, month, day, hour
+# in UTC (Coordinated Universal Time)
+library(lubridate)
+og_wanliu$Date <- with(og_wanliu, ymd_h(paste(year, month, day, hour, sep= ' '))) 
+wanliu <- og_wanliu[c(5,6)] # only take pm2.5 and new date column
+```
+
+```{r}
+# Precentage of NA values
+nrow(wanliu) # 35064
+summary(wanliu) # 382 NAs
+# 382/35064 = 0.01089436 (about 1 precent)
+```
+
+The NAs only make up 1% of the data.
+
+```{r}
+# wanliu <- na.omit(wanliu) # omit missing values 
+summary(wanliu)
+str(wanliu)
+class(wanliu)
+```
+
+Date column is in POSIXct format. 
+We can see that there is a huge difference between median and maximum values.
+
+# Check for outliers
+
+## Before Aggregation
+
+```{r}
+library(gridExtra)
+
+p1 <- wanliu %>%
+  ggplot(aes(x = PM2.5)) +
+  geom_boxplot(color = "brown", fill = "white") + labs(title="Distribution of PM2.5",x='ug/m3',y='PM2.5') 
+
+p2 <- wanliu %>%
+  ggplot(aes(x = PM2.5)) +
+  geom_histogram(color = "brown", fill = "white", binwidth=20)
+
+grid.arrange(p1,p2 ,nrow=2)
+```
+
+
+```{r}
+mean_pollutants_per_day<-wanliu %>%
+     as.data.frame %>%
+    select('Date','PM2.5')%>%
+      mutate(date_ymd=as.Date(Date,format="%Y-%m-%d"))%>%
+           group_by(date_ymd)%>%
+         summarise(PM2.5=mean(PM2.5,na.rm=TRUE))
+
+daily_avg <- as.data.frame(mean_pollutants_per_day)
+```
+
+```{r}
+p1 <- daily_avg %>%
+  ggplot(aes(x = PM2.5)) +
+  geom_boxplot(color = "goldenrod3", fill = "white") + labs(title="Distribution of PM2.5 on Daily Max Values",x='ug/m3',y='PM2.5') 
+
+p2 <- daily_avg %>%
+  ggplot(aes(x = PM2.5)) +
+  geom_histogram(color = "goldenrod3", fill = "white", binwidth=20) + labs(x='ug/m3',y='Count')
+
+grid.arrange(p1,p2 ,nrow=2)
+```
+
+# Time series flow
+
+- From previous section, we saw the distribution of four pollutants. Now we will see the time series flow for the same.
+
+```{r}
+library(scales)
+# using daily avg
+ggplot(data=daily_avg,aes(x=date_ymd,y=PM2.5))+geom_line(color="lightslateblue")+
+scale_x_date(breaks = seq(as.Date("2013-01-01"), as.Date("2017-01-01"), by="6 months"),labels = date_format("%b-%y"))+
+xlab('Date')+ylab('ug/m3')+ggtitle(paste('Daily Maximum Emission of PM2.5'))+
+theme(axis.text.x = element_text(angle = 45, hjust = 1),legend.position="none")
+```
+
+# Time Series on Bejing
+
+```{r}
+library(ggfortify)
+  
+#converting to time series
+# count is avg emission
+PM25_ts<-ts(daily_avg$PM2.5,frequency = 365, start = c(2013,03))
+
+PM25_ts <- as.data.frame(PM25_ts)
+
+#ggplot format of ts plot    
+autoplot(PM25_ts,ts.colour ="black") +xlab('Date')+ylab('Count')+ggtitle('Time Series of PM2.5 Pollutant')
+```
+
+```{r}
+PM25_ts_decompose<-decompose(PM25_ts)
+
+actual<-autoplot(PM25_ts_decompose$x)+xlab("Year")+ylab("Count")+ggtitle("Observed time series of PM2.5")
+seas<-autoplot(PM25_ts_decompose$seasonal)+xlab("Year")+ylab("Count")+ggtitle("Seasonality time series of PM2.5")
+tren<-autoplot(PM25_ts_decompose$trend)+xlab("Year")+ylab("Count")+ggtitle("Trend time series of PM2.5")
+res<-autoplot(PM25_ts_decompose$random)+xlab("Year")+ylab("Count")+ggtitle("Residuals time series of PM2.5")
+grid.arrange(actual,seas,tren,res,ncol=2,top="Decomposition of PM2.5 Time Series")
+```
+
+- There is seasonality and trend factor.
+
+# Quantile Regression
+
+```{r}
+library(ggplot2)
+ggplot(data=daily_avg,aes(x=date_ymd,y=PM2.5))+geom_line(color="black")+
+scale_x_date(breaks = seq(as.Date("2013-01-01"), as.Date("2017-01-01"), by="6 months"),labels = date_format("%b-%y"))+
+xlab('Date')+ylab('ug/m3')+ggtitle(paste('Daily Maximum Emission of PM2.5'))+
+theme(axis.text.x = element_text(angle = 45, hjust = 1),legend.position="none") +
+  geom_quantile(quantiles = 0.98)
+```
+
+
+```{r}
+library(quantreg)
+qr1 <- rq(PM2.5 ~ date_ymd, data=daily_avg, tau = c(0.25,0.5,0.75,0.9,0.95,0.98))
+summary(qr1)
+
+# Duplicate dataset, modify residuals
+qr2 <- daily_avg %>%
+  mutate(residuals=residuals(qr1), linpred=predict(qr1))
+
+# Plot of predictions of model against residuals of model
+qr2 %>%
+  ggplot(aes(x = linpred, y = residuals)) +
+  geom_point() +
+  geom_smooth(method = 'loess')
+```
+
+```{r}
+qs = c(0.25,0.5,0.75,0.9,0.95,0.98)
+ggplot(data=daily_avg,aes(x=date_ymd,y=PM2.5))+geom_line(color="black")+
+scale_x_date(breaks = seq(as.Date("2013-01-01"), as.Date("2017-01-01"), by="6 months"),labels = date_format("%b-%y"))+
+xlab('Date')+ylab('ug/m3')+ggtitle(paste('24-Hour Emission of PM2.5'))+
+theme(axis.text.x = element_text(angle = 45, hjust = 1),legend.position="none") +
+  geom_quantile(quantiles = qs)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

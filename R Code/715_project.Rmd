@@ -1,0 +1,372 @@
+---
+title: "715_project"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#Set working directory (MAC)
+# setwd("/Users/isabellachittumuri/Desktop/Project/STAT 715/PRSA_Data_20130301-20170228")
+
+#Packages
+library(dplyr)
+library(tidyverse)
+library(readxl)
+library(readr)
+library(tidyverse)
+# library(qualityTools)
+```
+
+# Check which multi-site to use 
+
+```{r eval=FALSE, include=FALSE}
+#Import all cvs for 12 cites 
+df1 <- read.csv("PRSA_Data_Aotizhongxin_20130301-20170228.csv", header = T)
+df2 <- read.csv("PRSA_Data_Changping_20130301-20170228.csv", header = T)
+df3 <- read.csv("PRSA_Data_Dingling_20130301-20170228.csv", header = T)
+df4 <- read.csv("PRSA_Data_Dongsi_20130301-20170228.csv", header = T)
+df5 <- read.csv("PRSA_Data_Guanyuan_20130301-20170228.csv", header = T)
+df6 <- read.csv("PRSA_Data_Gucheng_20130301-20170228.csv", header = T)
+df7 <- read.csv("PRSA_Data_Huairou_20130301-20170228.csv", header = T)
+df8 <- read.csv("PRSA_Data_Nongzhanguan_20130301-20170228.csv", header = T)
+df9 <- read.csv("PRSA_Data_Shunyi_20130301-20170228.csv", header = T)
+df10 <- read.csv("PRSA_Data_Tiantan_20130301-20170228.csv", header = T)
+df11 <- read.csv("PRSA_Data_Wanliu_20130301-20170228.csv", header = T)
+df12 <- read.csv("PRSA_Data_Wanshouxigong_20130301-20170228.csv", header = T)
+
+#Only keep columns: year, month, day, hour, PM2.5
+df1 <- df1[c(2:6)]
+df2 <- df2[c(2:6)]
+df3 <- df3[c(2:6)]
+df4 <- df4[c(2:6)]
+df5 <- df5[c(2:6)]
+df6 <- df6[c(2:6)]
+df7 <- df7[c(2:6)]
+df8 <- df8[c(2:6)]
+df9 <- df9[c(2:6)]
+df10 <- df10[c(2:6)]
+df11 <- df11[c(2:6)]
+df12 <- df12[c(2:6)]
+
+# check for missing data
+sum(is.na(df1))
+sum(is.na(df2))
+sum(is.na(df3))
+sum(is.na(df4))
+sum(is.na(df5))
+sum(is.na(df6))
+sum(is.na(df7))
+sum(is.na(df8))
+sum(is.na(df9))
+sum(is.na(df10))
+sum(is.na(df11))
+sum(is.na(df12))
+```
+
+# Exploratory Analysis
+
+Wanliu Cite 11 (PRSA_Data_Wanliu_20130301-20170228.csv) has the least amount of missing data with only 382 N.A. values
+
+```{r}
+wanliu <- read.csv("PRSA_Data_Wanliu_20130301-20170228.csv", header = T)
+og_wanliu <- wanliu[c(2:6)]
+```
+
+```{r}
+# combine year, month, day, hour
+# in UTC (Coordinated Universal Time)
+library(lubridate)
+og_wanliu$Date <- with(og_wanliu, ymd_h(paste(year, month, day, hour, sep= ' '))) 
+wanliu <- og_wanliu[c(5,6)] # only take pm2.5 and new date column
+```
+
+```{r}
+# Precentage of NA values
+nrow(wanliu) # 35064
+summary(wanliu) # 382 NAs
+# 382/35064 = 0.01089436 (about 1 precent)
+```
+
+The NAs only make up 1% of the data.
+
+```{r}
+# wanliu <- na.omit(wanliu) # omit missing values 
+summary(wanliu)
+str(wanliu)
+class(wanliu)
+```
+
+Date column is in POSIXct format. 
+We can see that there is a huge difference between median and maximum values.
+
+# Check for outliers
+
+## Before Aggregation
+
+```{r}
+library(gridExtra)
+
+p1 <- wanliu %>%
+  ggplot(aes(x = PM2.5)) +
+  geom_boxplot(color = "brown", fill = "white") + labs(title="Distribution of PM2.5",x='ug/m3',y='PM2.5') 
+
+p2 <- wanliu %>%
+  ggplot(aes(x = PM2.5)) +
+  geom_histogram(color = "brown", fill = "white", binwidth=20)
+
+grid.arrange(p1,p2 ,nrow=2)
+```
+
+From above, we find that there are too many outliers found on these pollutants. We cant say them as outlier instead can call them as high unexpected value. 
+
+## After Aggregation
+
+Take the maximum value for each day and averaged it for each month
+
+Why averaged max instead mean?
+- to see maximum cause done by air pollutant per day.
+- there can be peak hours in a day where values can go higher and drop down all of sudden. If we average for all those values from a day,it could be non relevant
+
+```{r}
+max_pollutants_per_day<-wanliu %>%
+     as.data.frame %>%
+    select('Date','PM2.5')%>%
+      mutate(date_ymd=as.Date(Date,format="%Y-%m-%d"))%>%
+           group_by(date_ymd)%>%
+         summarise(PM2.5=max(PM2.5,na.rm=TRUE))
+
+daily_max <- as.data.frame(max_pollutants_per_day)
+```
+
+```{r}
+p1 <- daily_max %>%
+  ggplot(aes(x = PM2.5)) +
+  geom_boxplot(color = "goldenrod3", fill = "white") + labs(title="Distribution of PM2.5 on Daily Max Values",x='ug/m3',y='PM2.5') 
+
+p2 <- daily_max %>%
+  ggplot(aes(x = PM2.5)) +
+  geom_histogram(color = "goldenrod3", fill = "white", binwidth=20) + labs(x='ug/m3',y='Count')
+
+grid.arrange(p1,p2 ,nrow=2)
+```
+
+After aggregating, we could see that the plot are bit more normalized comparative to previous.But still we find some outliers in this case.
+
+# Time series flow
+
+- From previous section, we saw the distribution of four pollutants. Now we will see the time series flow for the same.
+
+```{r}
+library(scales)
+# using hourly data for all years
+ggplot(data = wanliu, aes(x = Date, y = PM2.5)) + 
+  geom_line(color = "#00AFBB") + xlab('Date')+ylab('ug/m3')+ggtitle(paste('Hourly Emission of PM2.5'))+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),legend.position="none")
+
+# using daily max
+ggplot(data=daily_max,aes(x=date_ymd,y=PM2.5))+geom_line(color="lightslateblue")+
+scale_x_date(breaks = seq(as.Date("2013-01-01"), as.Date("2017-01-01"), by="6 months"),labels = date_format("%b-%y"))+
+xlab('Date')+ylab('ug/m3')+ggtitle(paste('Daily Maximum Emission of PM2.5'))+
+theme(axis.text.x = element_text(angle = 45, hjust = 1),legend.position="none")
+
+# getting monthly avg
+month_avg<-daily_max%>%
+    mutate(y_m_d=paste(substr(date_ymd,1,nchar(date_ymd)+2),"-01"))%>%
+    group_by(y_m_d)%>%
+   summarise(avg_emission=mean(PM2.5,na.rm=TRUE))
+
+ggplot(data=month_avg,aes(x=as.Date(y_m_d, format = "%Y - %m - %d"),y=avg_emission))+geom_line(color="magenta3")+
+scale_x_date(breaks = seq(as.Date("2013-01-01"), as.Date("2017-01-01"), by="6 months"), date_labels = "%b-%y")+
+xlab('Date')+ylab('ug/m3')+ggtitle(paste('Monthly Average Emission of PM2.5'))+
+theme(axis.text.x = element_text(angle = 45, hjust = 1),legend.position="none")
+```
+
+# Monthly Series for all years
+
+- Taken the maximum value of each day and averaged it for all months.The values are scaled or performed log.We saw the same plots in previous section. Lets have a look at it all at a time.
+
+```{r eval=FALSE, include=FALSE}
+ggplot(data=month_avg,aes(x=as.Date(y_m_d,format="%Y - %m - %d"),y=scale(avg_emission)))+ geom_line(color="lightslateblue")+
+    scale_x_date(breaks = seq(as.Date("2013-01-01"), as.Date("2017-01-01"), by="12 months"), date_labels = "%Y")+
+xlab('')+ylab("PM2.5")+ ggtitle("Monthly Averaged on Daily Maximum Values") + 
+theme(axis.text.x = element_text(angle = 45, hjust = 1),legend.position="none")   
+```
+
+# Hourly Series
+
+- Series contains maximum value recorded for each hour
+
+```{r eval=FALSE, include=FALSE}
+max_each_hour<-og_wanliu%>%
+    select('hour','Date','PM2.5')%>%
+  group_by(hour)%>%
+  summarise(count=max(PM2.5,na.rm=TRUE))
+
+p1<-ggplot(max_each_hour,aes(as.numeric(hour),count))+geom_line(color="magenta3")+
+    scale_x_continuous(breaks=seq(0,23,1), limits=c(0,23)) +
+    xlab('')+ylab('PM2.5') + ggtitle("Max for Each Hour")
+
+mean_each_hour<-og_wanliu%>%
+    select('hour','Date','PM2.5')%>%
+  group_by(hour)%>%
+  summarise(count=mean(PM2.5,na.rm=TRUE))
+
+p2<-ggplot(mean_each_hour,aes(as.numeric(hour),count))+geom_line(color="magenta3")+
+    scale_x_continuous(breaks=seq(0,23,1), limits=c(0,23)) +
+    xlab('')+ylab('PM2.5') + ggtitle("Mean for Each Hour")
+
+min_each_hour<-og_wanliu%>%
+    select('hour','Date','PM2.5')%>%
+  group_by(hour)%>%
+  summarise(count=min(PM2.5,na.rm=TRUE))
+
+p3<-ggplot(min_each_hour,aes(as.numeric(hour),count))+geom_line(color="magenta3")+
+    scale_x_continuous(breaks=seq(0,23,1), limits=c(0,23)) +
+    xlab('')+ylab('PM2.5') + ggtitle("Min for Each Hour")
+
+grid.arrange(p1,p2,p3)
+```
+
+- shows there is not set time, that pollution occurs 
+
+```{r eval=FALSE, include=FALSE}
+max_each_month<-og_wanliu%>%
+    select('month','Date','PM2.5')%>%
+  group_by(month)%>%
+  summarise(count=max(PM2.5,na.rm=TRUE))
+
+p1<-ggplot(max_each_month,aes(as.numeric(month),count))+geom_line(color="magenta3")+
+    scale_x_continuous(breaks=seq(1,12,1), limits=c(1,12)) +
+    xlab('')+ylab('PM2.5') + ggtitle("Max for Each Month")
+
+mean_each_month<-og_wanliu%>%
+    select('month','Date','PM2.5')%>%
+  group_by(month)%>%
+  summarise(count=mean(PM2.5,na.rm=TRUE))
+
+p2<-ggplot(mean_each_month,aes(as.numeric(month),count))+geom_line(color="magenta3")+
+    scale_x_continuous(breaks=seq(1,12,1), limits=c(1,12)) +
+    xlab('')+ylab('PM2.5') + ggtitle("Mean for Each Month")
+
+min_each_month<-og_wanliu%>%
+    select('month','Date','PM2.5')%>%
+  group_by(month)%>%
+  summarise(count=min(PM2.5,na.rm=TRUE))
+
+p3<-ggplot(min_each_month,aes(as.numeric(month),count))+geom_line(color="magenta3")+
+    scale_x_continuous(breaks=seq(1,12,1), limits=c(1,12)) +
+    xlab('')+ylab('PM2.5') + ggtitle("Min for Each Month")
+
+grid.arrange(p1,p2,p3)
+```
+
+- there is some kind of trend as the months progress. We see the numbers range is so different though
+
+# Time Series on Bejing
+
+```{r}
+library(ggfortify)
+PM25<-wanliu%>%
+     as.data.frame %>%
+      mutate(date_ymd=as.Date(Date,format="%Y-%m-%d"))%>%
+           group_by(date_ymd)%>%
+         summarise(max_pol=max(PM2.5,na.rm=TRUE))%>%
+    as.data.frame %>%
+    mutate(y_m=paste(substr(date_ymd,1,nchar(date_ymd)+2),"-01"))%>%
+    group_by(y_m)%>%
+   summarise(avg_emission=mean(max_pol,na.rm=TRUE))
+
+PM25_flow<-data.frame("date"=as.Date(PM25$y_m,format="%Y - %m - %d"),"count"=pollutant$avg_emission)
+  
+#converting to time series
+# count is avg emission
+PM25_ts<-ts(PM25_flow$count,frequency = 12,start = c(2013,03))
+
+#ggplot format of ts plot    
+autoplot(PM25_ts,ts.colour ="black") +xlab('Date')+ylab('Count')+ggtitle('Time Series of PM2.5 Pollutant')
+```
+
+```{r}
+PM25_ts_decompose<-decompose(PM25_ts)
+
+actual<-autoplot(PM25_ts_decompose$x)+xlab("Year")+ylab("Count")+ggtitle("Actual time series of PM2.5")
+seas<-autoplot(PM25_ts_decompose$seasonal)+xlab("Year")+ylab("Count")+ggtitle("Seasonality time series of PM2.5")
+tren<-autoplot(PM25_ts_decompose$trend)+xlab("Year")+ylab("Count")+ggtitle("Trend time series of PM2.5")
+grid.arrange(actual,seas,tren,ncol=1,top="Decomposition of PM2.5 Time Series")
+```
+
+- There is little seasonality effect and trend factor.
+
+
+
+
+```{r}
+plot(PM25_ts) # plot the raw data
+abline(reg=lm(PM25_ts~time(PM25_ts))) # fit a trend line
+```
+
+```{r}
+cycle(PM25_ts)
+```
+
+
+```{r}
+boxplot(PM25_ts~cycle(PM25_ts))
+```
+
+
+
+
+```{r}
+
+wanliu_ts <- as.ts(wanliu$PM2.5, frequency(24))
+wanliu_ts %>% mstl() %>%
+  autoplot() + xlab("Week")
+```
+
+
+```{r}
+wanliu_ts_decompose<-decompose(wanliu_ts)
+
+actual<-autoplot(wanliu_ts_decompose$x)+xlab("Year")+ylab("Count")+ggtitle("Actual time series of PM2.5")
+seas<-autoplot(wanliu_ts_decompose$seasonal)+xlab("Year")+ylab("Count")+ggtitle("Seasonality time series of PM2.5")
+tren<-autoplot(wanliu_ts_decompose$trend)+xlab("Year")+ylab("Count")+ggtitle("Trend time series of PM2.5")
+grid.arrange(actual,seas,tren,ncol=1,top="Decomposition of PM2.5 Time Series")
+```
+
+```{r}
+write.csv(wanliu,"C:\\Users\\isabellachittumuri\\Desktop\\Project\\STAT 715\\Wanliu.csv", row.names = FALSE)
+```
+
+```{r}
+# save df into desktop
+write.csv(wanliu,'wanliu.csv')
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
