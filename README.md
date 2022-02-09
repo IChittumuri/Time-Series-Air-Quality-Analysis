@@ -1,0 +1,2 @@
+### Abstract
+Beijing, China is known to experience one of the worst air pollution worldwide. The U.S Environmental Protection Agency (EPA) collaborates with China’s Ministry of Environmental Protection (MEP) to offer guidance on ambient air quality standards for six principal pollutants that can be harmful to public and environmental health [1]. In this project, we studied the statistical time series analysis of PM2.5 concentration levels in Beijing to model, forecast, and determine air quality levels.
